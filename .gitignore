@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# 模擬產物
+pin_entry_sim
+*.vcd
+*.fst
+*.vvp
+work/
+transcript
+vsim.wlf
+
+# Quartus 產物
+db/
+incremental_db/
+output_files/
+simulation/
+*.qws

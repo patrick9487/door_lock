@@ -9,6 +9,7 @@ pin_entry_sim
 work/
 transcript
 vsim.wlf
+*_sim
 
 # Quartus 產物
 db/

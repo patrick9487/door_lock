@@ -18,7 +18,8 @@ module door_lock_top #(
 
     output reg        o_unlock_pulse,
     output reg        o_error_pulse,
-    output wire       o_locked
+    output wire       o_locked,
+	 output wire o_buzzer
 );
 
     localparam [1:0] INPUT_PIN    = 2'd0;
@@ -84,7 +85,7 @@ module door_lock_top #(
     wire       lcd_write_rs;
     wire [7:0] lcd_write_data;
 
-
+	 assign o_buzzer = 1'b1;
     // --------------------------------------------------------
     // 1. 輸入允許與 UI 事件
     // --------------------------------------------------------

@@ -3,8 +3,9 @@
 module tb_keypad_input;
     // Accelerate simulation by reducing the DUT's cycles per row.
     // The clock remains 50 MHz; CLK_HZ here is a simulation override.
-    localparam integer TEST_CLK_HZ = 10_000;
-    localparam integer ROW_CYCLES = TEST_CLK_HZ / 1000;
+    parameter integer TEST_CLK_HZ = 10_000;
+    localparam integer ROW_CYCLES =
+        (TEST_CLK_HZ / 1000 < 3) ? 3 : TEST_CLK_HZ / 1000;
     localparam integer FRAME_CYCLES = 4 * ROW_CYCLES;
     localparam integer SETTLE_CYCLES = 8 * FRAME_CYCLES;
 

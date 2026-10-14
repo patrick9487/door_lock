@@ -13,10 +13,10 @@ module lcd_ctrl #(
     output reg        o_init_done,
     output reg        o_done_pulse,
 
-    // LCD 實體腳位；RW 直接接地
+    // LCD 實體腳位；RW 由頂層固定拉低
     output reg        o_lcd_rs,
     output reg        o_lcd_e,
-    output reg  [3:0] o_lcd_data     // [3:0] 對應 D7～D4
+    output reg  [3:0] o_lcd_data     // [3]=D7、[2]=D6、[1]=D5、[0]=D4
 );
 
     // 常數在編譯時計算，不會產生除法器
@@ -30,6 +30,8 @@ module lcd_ctrl #(
     localparam integer POWER_CYCLES = MS_CYCLES * 50;
     localparam integer FIRST_CYCLES = MS_CYCLES * 5;
     localparam integer EXEC_CYCLES  = MS_CYCLES * 3;
+    // 一般寫入等待 100 us；清屏、回原點與初始化仍保留 3 ms。
+    localparam integer WRITE_CYCLES = US_CYCLES * 100;
 
     localparam [2:0] POWER_WAIT = 3'd0;
     localparam [2:0] INIT_LOAD  = 3'd1;
@@ -219,7 +221,11 @@ module lcd_ctrl #(
 
                         single_nibble <= 1'b0;
                         low_nibble    <= 1'b0;
-                        wait_cycles   <= EXEC_CYCLES;
+                        if (!i_rs && ((i_data == 8'h01) ||
+                                     ((i_data & 8'hFE) == 8'h02)))
+                            wait_cycles <= EXEC_CYCLES;
+                        else
+                            wait_cycles <= WRITE_CYCLES;
 
                         counter <= 32'd0;
                         state   <= SETUP;

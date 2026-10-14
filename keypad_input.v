@@ -11,7 +11,9 @@ module keypad_input #(
 );
 
     // 每條 row 停留約 1 ms；CLK_HZ 必須至少為 1000
-    localparam integer SCAN_CYCLES = CLK_HZ / 1000;
+    // 至少保留三拍，避免兩級同步後的 column 被歸到下一排。
+    localparam integer SCAN_CYCLES =
+        (CLK_HZ / 1000 < 3) ? 3 : CLK_HZ / 1000;
 
     localparam WAIT_PRESS   = 1'b0;
     localparam WAIT_RELEASE = 1'b1;

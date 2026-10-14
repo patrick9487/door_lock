@@ -1,5 +1,7 @@
 module door_lock_top #(
     parameter integer CLK_HZ = 50_000_000,
+    // 板上按鍵放開為 3.3 V、按下接地。
+    parameter RESET_ACTIVE_LOW = 1'b1,
 
     // 整合測試用固定密碼，每個十六進位 nibble 存一個數字
     // 123456：PIN_LENGTH = 6，PIN_CODE = 512'h123456
@@ -7,19 +9,20 @@ module door_lock_top #(
     parameter [511:0] PIN_CODE = 512'h123456
 )(
     input  wire       i_clk,
-    input  wire       i_rst,
+    input  wire       i_rst, // 外部 reset 按鍵；預設低有效
 
     input  wire [3:0] i_col,
     output wire [3:0] o_row,
 
     output wire       o_lcd_rs,
+    output wire       o_lcd_rw,
     output wire       o_lcd_e,
     output wire [3:0] o_lcd_data,
 
     output reg        o_unlock_pulse,
     output reg        o_error_pulse,
     output wire       o_locked,
-	 output wire o_buzzer
+    output wire       o_buzzer
 );
 
     localparam [1:0] INPUT_PIN    = 2'd0;
@@ -85,7 +88,31 @@ module door_lock_top #(
     wire       lcd_write_rs;
     wire [7:0] lcd_write_data;
 
-	 assign o_buzzer = 1'b1;
+    assign o_buzzer = 1'b1;
+
+    // QSF 將 RW 接到 PIN_97；本驅動只寫入，必須持續拉低。
+    assign o_lcd_rw = 1'b0;
+
+    // FPGA 配置完成後自動重置，無須先按外部 reset。
+    // Quartus 將宣告初值實作為暫存器 power-up level。
+    reg [5:0] startup_count = 6'd0;
+    reg [1:0] reset_sync = 2'b11;
+    wire external_reset = RESET_ACTIVE_LOW ? !i_rst : i_rst;
+    wire reset_active = !startup_count[5] || reset_sync[1];
+
+    always @(posedge i_clk) begin
+        if (!startup_count[5])
+            startup_count <= startup_count + 1'b1;
+    end
+
+    // 將按鍵極性轉成內部高有效 reset；非同步置位、同步解除。
+    always @(posedge i_clk or posedge external_reset) begin
+        if (external_reset)
+            reset_sync <= 2'b11;
+        else
+            reset_sync <= {reset_sync[0], 1'b0};
+    end
+
     // --------------------------------------------------------
     // 1. 輸入允許與 UI 事件
     // --------------------------------------------------------
@@ -96,7 +123,7 @@ module door_lock_top #(
         pin_enable &&
         !pin_submitted &&
         !pin_clear &&
-        !i_rst &&
+        !reset_active &&
         key_pulse &&
         (key_code <= 5'd9) &&
         !pin_full;
@@ -163,7 +190,7 @@ module door_lock_top #(
         .CLK_HZ(CLK_HZ)
     ) u_keypad (
         .i_clk      (i_clk),
-        .i_rst      (i_rst),
+        .i_rst      (reset_active),
         .i_col      (i_col),
         .o_row      (o_row),
         .o_key_pulse(key_pulse),
@@ -179,7 +206,7 @@ module door_lock_top #(
         .MAX_DIGITS(128)
     ) u_pin_entry (
         .i_clk         (i_clk),
-        .i_rst         (i_rst),
+        .i_rst         (reset_active),
         .i_clear       (pin_clear),
         .i_key_pulse   (key_pulse),
         .i_key_code    (key_code),
@@ -203,7 +230,7 @@ module door_lock_top #(
         .MAX_DIGITS(128)
     ) u_pin_compare (
         .i_clk        (i_clk),
-        .i_rst        (i_rst),
+        .i_rst        (reset_active),
         .i_start      (compare_start),
 
         .i_pin_length (pin_length),
@@ -229,7 +256,7 @@ module door_lock_top #(
         .CLK_HZ(CLK_HZ)
     ) u_lcd_ui (
         .i_clk            (i_clk),
-        .i_rst            (i_rst),
+        .i_rst            (reset_active),
 
         .i_pin_length     (pin_length),
         .o_pin_read_addr  (ui_read_addr),
@@ -257,7 +284,7 @@ module door_lock_top #(
         .CLK_HZ(CLK_HZ)
     ) u_lcd_ctrl (
         .i_clk        (i_clk),
-        .i_rst        (i_rst),
+        .i_rst        (reset_active),
 
         .i_write_pulse(lcd_write_pulse),
         .i_rs         (lcd_write_rs),
@@ -278,7 +305,7 @@ module door_lock_top #(
     //    後續可移到 lock_ctrl，並接入 EEPROM 持久狀態
     // --------------------------------------------------------
     always @(posedge i_clk) begin
-        if (i_rst) begin
+        if (reset_active) begin
             state          <= INPUT_PIN;
             display_status <= STATUS_INPUT;
             fail_count     <= 2'd0;

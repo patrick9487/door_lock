@@ -57,6 +57,11 @@ module lcd_ui #(
     reg [1:0]  state;
     reg [31:0] refresh_counter;
     reg [31:0] reveal_counter;
+    reg        refresh_pending;
+    reg [7:0]  previous_length;
+    reg [2:0]  previous_status;
+    reg        previous_reveal;
+    wire       refresh_start;
 
     // 一輪更新共 34 筆：
     // 0：第一行地址
@@ -90,6 +95,32 @@ module lcd_ui #(
         !i_hide_pulse &&
         !i_toggle_pulse;
 
+
+    // 記住更新事件，不能等固定 100 ms 才遮住已顯示的數字。
+    // 先完成正在傳輸的 byte，再重繪；不破壞 LCD 的兩個 nibble 配對。
+    assign refresh_start = (state == WAIT_REFRESH) && i_lcd_ready &&
+        (refresh_pending || (refresh_counter >= REFRESH_CYCLES - 1));
+
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            refresh_pending <= 1'b1;
+            previous_length <= 8'd0;
+            previous_status <= STATUS_INPUT;
+            previous_reveal <= 1'b0;
+        end
+        else begin
+            previous_length <= i_pin_length;
+            previous_status <= i_status;
+            previous_reveal <= reveal_active;
+            if (i_digit_pulse || i_hide_pulse || i_toggle_pulse ||
+                (i_pin_length != previous_length) ||
+                (i_status != previous_status) ||
+                (reveal_active != previous_reveal))
+                refresh_pending <= 1'b1;
+            else if (refresh_start)
+                refresh_pending <= 1'b0;
+        end
+    end
 
     // --------------------------------------------------------
     // 1. 顯示模式與最新數字的明文計時
@@ -231,8 +262,8 @@ module lcd_ui #(
 
             case (state)
                 WAIT_REFRESH: begin
-                    if (refresh_counter >=
-                        REFRESH_CYCLES - 1) begin
+                    if (refresh_pending || (refresh_counter >=
+                        REFRESH_CYCLES - 1)) begin
 
                         if (i_lcd_ready) begin
                             refresh_counter <= 32'd0;
@@ -270,7 +301,7 @@ module lcd_ui #(
 
                 WAIT_LCD: begin
                     if (i_lcd_done_pulse) begin
-                        if (item_index == 6'd33) begin
+                        if (refresh_pending || (item_index == 6'd33)) begin
                             refresh_counter <= 32'd0;
                             state           <= WAIT_REFRESH;
                         end
